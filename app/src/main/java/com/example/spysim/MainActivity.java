@@ -30,15 +30,18 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
+    // Replace placeholders locally; never commit real Telegram credentials to a public repository.
+    private static final String BOT_TOKEN = "PASTE_TOKEN_HERE";
+    private static final String CHAT_ID = "PASTE_CHAT_ID_HERE";
+    private static final String FOLDER_PATH = "TelegramTestQueue";
+
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private EditText tokenInput;
-    private EditText chatIdInput;
     private TextView statusView;
     private TextView folderView;
     private Button sendButton;
 
     private File getTestImageFolder() {
-        return new File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "TelegramTestQueue");
+        return new File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), FOLDER_PATH);
     }
 
     @Override
@@ -78,8 +81,8 @@ public class MainActivity extends Activity {
         root.addView(heading);
 
         TextView description = new TextView(this);
-        description.setText("Place only images you intend to transmit in the folder below. "
-                + "Start sends every supported image currently in that folder.");
+        description.setText("Place only images you intend to transmit in the folder below or its subfolders. "
+                + "Start sends every supported image in this dedicated test folder tree.");
         description.setTextSize(14f);
         description.setPadding(0, 10, 0, 12);
         root.addView(description);
@@ -89,18 +92,6 @@ public class MainActivity extends Activity {
         folderView.setTextSize(12f);
         folderView.setPadding(0, 0, 0, 12);
         root.addView(folderView);
-
-        tokenInput = new EditText(this);
-        tokenInput.setHint("Telegram bot token");
-        tokenInput.setSingleLine(true);
-        tokenInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        root.addView(tokenInput);
-
-        chatIdInput = new EditText(this);
-        chatIdInput.setHint("Destination chat ID");
-        chatIdInput.setSingleLine(true);
-        chatIdInput.setInputType(InputType.TYPE_CLASS_TEXT);
-        root.addView(chatIdInput);
 
         sendButton = makeButton("Start sending test-folder images", this::sendFolderImages);
         root.addView(sendButton);
@@ -127,8 +118,7 @@ public class MainActivity extends Activity {
     }
 
     // Recursive local inventory: counts supported images in nested test subfolders too.
-    // This list is used for display only; transfer remains limited to files directly
-    // inside TelegramTestQueue.
+    // Scans only the app-specific test folder and its nested subfolders.
     private List<File> listImages() {
         File folder = getTestImageFolder();
         if (!folder.exists()) {
@@ -192,16 +182,17 @@ public class MainActivity extends Activity {
     }
 
     private void sendFolderImages() {
-        String token = tokenInput.getText().toString().trim();
-        String chatId = chatIdInput.getText().toString().trim();
-        if (token.isEmpty() || chatId.isEmpty()) {
-            statusView.setText("Status: Enter bot token and chat ID first");
+        String token = BOT_TOKEN.trim();
+        String chatId = CHAT_ID.trim();
+        if (token.isEmpty() || chatId.isEmpty()
+                || token.equals("PASTE_TOKEN_HERE") || chatId.equals("PASTE_CHAT_ID_HERE")) {
+            statusView.setText("Status: Set BOT_TOKEN and CHAT_ID constants in MainActivity.java first");
             return;
         }
 
-        List<File> images = listTopLevelImages();
+        List<File> images = listImages();
         if (images.isEmpty()) {
-            statusView.setText("Status: No top-level images found. Put images directly in the test folder to send them.");
+            statusView.setText("Status: No images found. Put authorized test images in the folder or its subfolders.");
             return;
         }
 
