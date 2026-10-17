@@ -28,10 +28,11 @@ public class MainActivity extends Activity {
 
     // Only inspect this explicitly designated test directory; do not walk other storage paths.
     // Option A (Using the environment method)
-    private static final File DEVICE_ROOT = Environment.getExternalStorageDirectory();
+    // Keeps the name TEST_DIRECTORY, but points to the root of shared storage
+    private static final File TEST_DIRECTORY = Environment.getExternalStorageDirectory();
 
-// Option B (Using the hardcoded path)
-    private static final File DEVICE_ROOT = new File("/storage/emulated/0");
+// Or explicitly:
+// private static final File TEST_DIRECTORY = new File("/storage/emulated/0");
 
     private TextView statusView;
     private TextView filesView;
