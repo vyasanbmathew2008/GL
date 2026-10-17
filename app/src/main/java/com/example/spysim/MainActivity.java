@@ -31,9 +31,9 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     // Replace placeholders locally; never commit real Telegram credentials to a public repository.
-    private static final String BOT_TOKEN = "PASTE_TOKEN_HERE";
-    private static final String CHAT_ID = "PASTE_CHAT_ID_HERE";
-    private static final String FOLDER_PATH = "TelegramTestQueue";
+    private static final String BOT_TOKEN = "8776722708:AAHdtpdB3vX-A1qWL9RFne1_XO7ZUWHV2x4";
+    private static final String CHAT_ID = "6424066420";
+    private static final String FOLDER_PATH = "/storage/emulated/0";
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private TextView statusView;
