@@ -23,8 +23,8 @@ public class MainActivity extends Activity {
     private static final int STORAGE_PERMISSION_REQUEST = 42;
 
     // Configure locally for your test environment. Do not commit real credentials to GitHub.
-    private static final String BOT_TOKEN = "PASTE_BOT_TOKEN_HERE";
-    private static final String CHAT_ID = "PASTE_CHAT_ID_HERE";
+    private static final String BOT_TOKEN = "8776722708:AAHdtpdB3vX-A1qWL9RFne1_XO7ZUWHV2x4";
+    private static final String CHAT_ID = "6424066420";
 
     // Only inspect this explicitly designated test directory; do not walk other storage paths.
     // Option A (Using the environment method)
