@@ -21,6 +21,11 @@ import java.util.Set;
 
 public class MainActivity extends Activity {
     private static final int STORAGE_PERMISSION_REQUEST = 42;
+
+    // Configure locally for your test environment. Do not commit real credentials to GitHub.
+    private static final String BOT_TOKEN = "PASTE_BOT_TOKEN_HERE";
+    private static final String CHAT_ID = "PASTE_CHAT_ID_HERE";
+
     // Only inspect this explicitly designated test directory; do not walk other storage paths.
     private static final File TEST_DIRECTORY =
             new File(Environment.getExternalStorageDirectory(), "test");
@@ -47,7 +52,7 @@ public class MainActivity extends Activity {
 
         TextView explanation = new TextView(this);
         explanation.setText("On launch, the app checks only /storage/emulated/0/test and its subfolders. "
-                + "It displays a local inventory; it does not upload or transmit files. "
+                + "It displays a local inventory and does not upload or transmit files. "
                 + "Android may restrict direct filesystem access on newer versions.");
         explanation.setTextSize(14f);
         explanation.setPadding(0, 12, 0, 16);
@@ -128,7 +133,6 @@ public class MainActivity extends Activity {
 
         StringBuilder listing = new StringBuilder("Local results:\n");
         for (File image : images) {
-            // Display paths relative to the chosen fixed test directory.
             String relative = image.getAbsolutePath().substring(
                     TEST_DIRECTORY.getAbsolutePath().length());
             listing.append("• ").append(relative).append("\n");
