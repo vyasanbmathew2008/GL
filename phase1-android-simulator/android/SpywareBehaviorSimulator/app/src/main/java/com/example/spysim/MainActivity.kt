@@ -2,41 +2,47 @@ package com.example.spysim
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import java.util.concurrent.atomic.AtomicBoolean
+import java.io.DataOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.UUID
+import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private val running = AtomicBoolean(false)
-    @Volatile private var worker: Thread? = null
-    private var imageCount = 3
+    private val executor = Executors.newSingleThreadExecutor()
+    private val selectedImages = mutableListOf<Uri>()
+    private lateinit var tokenInput: EditText
+    private lateinit var chatIdInput: EditText
     private lateinit var statusView: TextView
-    private lateinit var logView: TextView
-    private lateinit var startButton: Button
-    private lateinit var stopButton: Button
+    private lateinit var selectionView: TextView
+    private lateinit var sendButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        showMandatoryWarning()
+        showConsentWarning()
     }
 
-    private fun showMandatoryWarning() {
+    private fun showConsentWarning() {
         AlertDialog.Builder(this)
-            .setTitle("SECURITY TEST SIMULATION")
+            .setTitle("Image sharing — permission required")
             .setMessage(
-                "This app is an offline Android security test simulator. It creates synthetic JPEGs " +
-                "and records simulated upload events for analysis. No gallery access, network requests, " +
-                "Telegram messages, or real photos are used.\n\nRun only in an authorized test environment."
+                "When you press Start, you agree to use this app to send images you explicitly " +
+                "select from this device to the Telegram chat ID you enter. Selected images will " +
+                "leave this device and be delivered to Telegram. Do not select images you do not " +
+                "have permission to share. The app does not scan or upload your whole gallery. " +
+                "Your bot token is entered at runtime and is not saved by this app or committed to GitHub."
             )
             .setCancelable(false)
-            .setPositiveButton("Start Simulation") { _, _ -> showDashboard() }
+            .setPositiveButton("Start") { _, _ -> showDashboard() }
             .setNegativeButton("Exit") { _, _ -> finish() }
             .show()
     }
@@ -46,122 +52,159 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 20, 24, 20)
         }
-        root.addView(TextView(this).apply { text = "Android Security Test Simulator (Offline)"; textSize = 22f })
-        statusView = TextView(this).apply {
-            text = "Status: READY"
-            textSize = 16f
-            setPadding(0, 16, 0, 16)
-        }
-        root.addView(statusView)
-        root.addView(button("Set Synthetic Image Count") { showConfiguration() })
-        startButton = button("Start Simulation") { startSimulation() }
-        root.addView(startButton)
-        stopButton = button("Stop Simulation") { stopSimulation() }
-        stopButton.isEnabled = false
-        root.addView(stopButton)
-        root.addView(button("Clear Event Log") {
-            EventLog.clear()
-            EventLog.add("LOG", "Displayed log cleared")
-            refreshLog()
+        root.addView(TextView(this).apply {
+            text = "Send selected images to Telegram"
+            textSize = 22f
         })
         root.addView(TextView(this).apply {
-            text = "Simulation Event Log (UTC)"
-            textSize = 18f
-            setPadding(0, 18, 0, 8)
+            text = "Enter a test bot token and destination chat ID. Credentials remain in memory only."
+            textSize = 14f
+            setPadding(0, 10, 0, 14)
         })
-        logView = TextView(this).apply {
-            textSize = 12f
-            typeface = android.graphics.Typeface.MONOSPACE
-            textIsSelectable = true
+        tokenInput = EditText(this).apply {
+            hint = "Telegram bot token"
+            singleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
-        val scroll = ScrollView(this).apply { addView(logView) }
-        root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        setContentView(root)
-        EventLog.add("APP", "Offline dashboard opened after user consent")
-        refreshLog()
+        root.addView(tokenInput)
+        chatIdInput = EditText(this).apply {
+            hint = "Destination chat ID"
+            singleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+        }
+        root.addView(chatIdInput)
+        root.addView(button("Choose images") { chooseImages() })
+        selectionView = TextView(this).apply {
+            text = "No images selected"
+            setPadding(0, 12, 0, 12)
+        }
+        root.addView(selectionView)
+        sendButton = button("Send selected images") { sendSelectedImages() }
+        sendButton.isEnabled = false
+        root.addView(sendButton)
+        statusView = TextView(this).apply {
+            text = "Status: READY"
+            textSize = 15f
+            setPadding(0, 16, 0, 8)
+        }
+        root.addView(statusView)
+        root.addView(button("Clear selection") {
+            selectedImages.clear()
+            selectionView.text = "No images selected"
+            sendButton.isEnabled = false
+            statusView.text = "Status: READY"
+        })
+        val scroll = ScrollView(this)
+        scroll.addView(root)
+        setContentView(scroll)
     }
 
     private fun button(label: String, action: () -> Unit) =
         Button(this).apply { text = label; setOnClickListener { action() } }
 
-    private fun showConfiguration() {
-        val input = android.widget.EditText(this).apply {
-            setText(imageCount.toString())
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+    private fun chooseImages() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "image/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
         }
-        AlertDialog.Builder(this).setTitle("Synthetic image count (1–20)").setView(input)
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Save") { _, _ ->
-                try {
-                    val n = input.text.toString().toInt()
-                    require(n in 1..20) { "Choose a count from 1 to 20" }
-                    imageCount = n
-                    EventLog.add("CONFIG", "Synthetic image count set to $imageCount")
-                    statusView.text = "Status: CONFIGURATION SAVED"
-                    refreshLog()
-                } catch (e: Exception) {
-                    statusView.text = "Status: CONFIGURATION ERROR — ${e.message}"
-                }
-            }.show()
+        startActivityForResult(intent, PICK_IMAGES)
     }
 
-    private fun startSimulation() {
-        if (!running.compareAndSet(false, true)) return
-        startButton.isEnabled = false
-        stopButton.isEnabled = true
-        statusView.text = "Status: RUNNING (OFFLINE)"
-        val count = imageCount
-        EventLog.add("SIMULATION_START", "offline synthetic-only run count=$count; network disabled")
-        refreshLog()
-        worker = Thread({
-            try {
-                for (index in 1..count) {
-                    if (!running.get() || Thread.currentThread().isInterrupted) break
-                    val file = SyntheticImageFactory.create(applicationContext, index)
-                    try {
-                        EventLog.add("SYNTHETIC_IMAGE_CREATED", "id=$index filename=${file.name} bytes=${file.length()}")
-                        EventLog.add("SIMULATED_UPLOAD", "id=$index result=NOT_SENT reason=offline_mode")
-                        mainHandler.post {
-                            statusView.text = "Status: SIMULATED EVENT $index OF $count (NOT SENT)"
-                            refreshLog()
-                        }
-                    } finally {
-                        file.delete()
-                    }
-                }
-            } catch (e: Exception) {
-                EventLog.add("SIMULATION_ERROR", "${e.javaClass.simpleName}: ${e.message}")
-            } finally {
-                running.set(false)
-                mainHandler.post {
-                    startButton.isEnabled = true
-                    stopButton.isEnabled = false
-                    statusView.text = "Status: STOPPED (OFFLINE)"
-                    EventLog.add("SIMULATION_STOP", "Offline worker finished")
-                    refreshLog()
+    @Deprecated("Uses the platform document picker for broad Android compatibility")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != PICK_IMAGES || resultCode != RESULT_OK || data == null) return
+        selectedImages.clear()
+        data.clipData?.let { clip ->
+            for (i in 0 until clip.itemCount) selectedImages.add(clip.getItemAt(i).uri)
+        } ?: data.data?.let { selectedImages.add(it) }
+        selectionView.text = if (selectedImages.isEmpty()) "No images selected"
+            else "${selectedImages.size} image(s) selected"
+        sendButton.isEnabled = selectedImages.isNotEmpty()
+        statusView.text = "Status: SELECTION READY"
+    }
+
+    private fun sendSelectedImages() {
+        val token = tokenInput.text.toString().trim()
+        val chatId = chatIdInput.text.toString().trim()
+        if (token.isBlank() || chatId.isBlank()) {
+            statusView.text = "Status: Enter bot token and chat ID first"
+            return
+        }
+        if (selectedImages.isEmpty()) {
+            statusView.text = "Status: Choose at least one image"
+            return
+        }
+        val images = selectedImages.toList()
+        sendButton.isEnabled = false
+        statusView.text = "Status: Sending ${images.size} selected image(s)…"
+        executor.execute {
+            var sent = 0
+            val errors = mutableListOf<String>()
+            images.forEachIndexed { index, uri ->
+                try {
+                    sendPhoto(token, chatId, uri, index + 1)
+                    sent++
+                } catch (e: Exception) {
+                    errors.add("Image ${index + 1}: ${e.message ?: e.javaClass.simpleName}")
                 }
             }
-        }, "OfflineSyntheticWorker").also { it.start() }
+            runOnUiThread {
+                statusView.text = if (errors.isEmpty()) {
+                    "Status: Sent $sent/${images.size} image(s) successfully"
+                } else {
+                    "Status: Sent $sent/${images.size}; failed: ${errors.joinToString("; ").take(500)}"
+                }
+                sendButton.isEnabled = selectedImages.isNotEmpty()
+            }
+        }
     }
 
-    private fun stopSimulation() {
-        if (!running.getAndSet(false)) return
-        worker?.interrupt()
-        EventLog.add("SIMULATION_STOP_REQUESTED", "User pressed Stop")
-        statusView.text = "Status: STOP REQUESTED"
-        refreshLog()
-    }
-
-    private fun refreshLog() {
-        if (!::logView.isInitialized) return
-        logView.text = EventLog.snapshot().joinToString("\n") {
-            "${it.timestamp} [${it.type}] ${it.message}"
+    private fun sendPhoto(token: String, chatId: String, uri: Uri, index: Int) {
+        val boundary = "----AndroidTelegram" + UUID.randomUUID().toString().replace("-", "")
+        val connection = (URL("https://api.telegram.org/bot$token/sendPhoto").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            doOutput = true
+            connectTimeout = 15000
+            readTimeout = 30000
+            setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        }
+        try {
+            DataOutputStream(connection.outputStream).use { out ->
+                fun field(name: String, value: String) {
+                    out.writeBytes("--$boundary\r\n")
+                    out.writeBytes("Content-Disposition: form-data; name=\"$name\"\r\n\r\n")
+                    out.write(value.toByteArray(Charsets.UTF_8))
+                    out.writeBytes("\r\n")
+                }
+                field("chat_id", chatId)
+                out.writeBytes("--$boundary\r\n")
+                out.writeBytes("Content-Disposition: form-data; name=\"photo\"; filename=\"selected_$index.jpg\"\r\n")
+                out.writeBytes("Content-Type: application/octet-stream\r\n\r\n")
+                contentResolver.openInputStream(uri).use { input ->
+                    requireNotNull(input) { "Unable to open selected image" }
+                    input.copyTo(out)
+                }
+                out.writeBytes("\r\n--$boundary--\r\n")
+            }
+            val code = connection.responseCode
+            val response = (if (code in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code !in 200..299 || !response.contains("\"ok\":true")) {
+                throw IllegalStateException("Telegram HTTP $code: ${response.take(250)}")
+            }
+        } finally {
+            connection.disconnect()
         }
     }
 
     override fun onDestroy() {
-        running.set(false)
-        worker?.interrupt()
+        executor.shutdownNow()
         super.onDestroy()
+    }
+
+    companion object {
+        private const val PICK_IMAGES = 1001
     }
 }
