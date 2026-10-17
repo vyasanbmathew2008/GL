@@ -1,6 +1,5 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
 }
 
 android {
@@ -15,14 +14,9 @@ android {
         versionName = "1.0"
     }
 
-    // The simulator's ECJ backend rejects the Java 17 target flag (-17).
-    // Use Java 8 bytecode for broad compatibility with this build environment.
+    // Java 8 bytecode target for compatibility with the simulator build environment.
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
-    }
-
-    kotlinOptions {
-        jvmTarget = "1.8"
     }
 }
