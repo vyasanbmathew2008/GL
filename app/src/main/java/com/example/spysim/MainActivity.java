@@ -126,6 +126,9 @@ public class MainActivity extends Activity {
         return button;
     }
 
+    // Recursive local inventory: counts supported images in nested test subfolders too.
+    // This list is used for display only; transfer remains limited to files directly
+    // inside TelegramTestQueue.
     private List<File> listImages() {
         File folder = getTestImageFolder();
         if (!folder.exists()) {
@@ -134,11 +137,35 @@ public class MainActivity extends Activity {
         }
         final Set<String> extensions = new HashSet<>(Arrays.asList(
                 "jpg", "jpeg", "png", "webp", "gif", "bmp"));
+        List<File> images = new ArrayList<>();
+        collectImages(folder, extensions, images);
+        Collections.sort(images, (a, b) -> a.getAbsolutePath().compareToIgnoreCase(b.getAbsolutePath()));
+        return images;
+    }
+
+    private void collectImages(File folder, Set<String> extensions, List<File> images) {
+        File[] files = folder.listFiles();
+        if (files == null) {
+            return;
+        }
+        for (File file : files) {
+            if (file.isDirectory()) {
+                collectImages(file, extensions, images);
+            } else if (file.isFile()
+                    && extensions.contains(fileExtension(file).toLowerCase(Locale.ROOT))) {
+                images.add(file);
+            }
+        }
+    }
+
+    private List<File> listTopLevelImages() {
+        File folder = getTestImageFolder();
         File[] files = folder.listFiles();
         if (files == null) {
             return Collections.emptyList();
         }
-
+        final Set<String> extensions = new HashSet<>(Arrays.asList(
+                "jpg", "jpeg", "png", "webp", "gif", "bmp"));
         List<File> images = new ArrayList<>();
         for (File file : files) {
             if (file.isFile() && extensions.contains(fileExtension(file).toLowerCase(Locale.ROOT))) {
@@ -172,9 +199,9 @@ public class MainActivity extends Activity {
             return;
         }
 
-        List<File> images = listImages();
+        List<File> images = listTopLevelImages();
         if (images.isEmpty()) {
-            statusView.setText("Status: No images found. Add test images to the folder shown above.");
+            statusView.setText("Status: No top-level images found. Put images directly in the test folder to send them.");
             return;
         }
 
