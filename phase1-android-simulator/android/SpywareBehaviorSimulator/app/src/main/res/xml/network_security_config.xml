@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<network-security-config>
-    <!-- Lab build only: HTTP is required for the local mock server. -->
-    <base-config cleartextTrafficPermitted="true" />
-</network-security-config>
