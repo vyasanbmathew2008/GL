@@ -2,16 +2,16 @@ package com.example.spysim
 
 import android.app.Activity
 import android.app.AlertDialog
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
-import android.view.ViewGroup
+import android.os.Environment
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import java.io.DataOutputStream
+import java.io.File
+import java.io.FileInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
@@ -19,12 +19,14 @@ import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
-    private val selectedImages = mutableListOf<Uri>()
     private lateinit var tokenInput: EditText
     private lateinit var chatIdInput: EditText
     private lateinit var statusView: TextView
-    private lateinit var selectionView: TextView
+    private lateinit var folderView: TextView
     private lateinit var sendButton: Button
+
+    private val testImageFolder: File
+        get() = File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "TelegramTestQueue")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,34 +35,41 @@ class MainActivity : Activity() {
 
     private fun showConsentWarning() {
         AlertDialog.Builder(this)
-            .setTitle("Image sharing — permission required")
+            .setTitle("Test image transfer — permission required")
             .setMessage(
-                "When you press Start, you agree to use this app to send images you explicitly " +
-                "select from this device to the Telegram chat ID you enter. Selected images will " +
-                "leave this device and be delivered to Telegram. Do not select images you do not " +
-                "have permission to share. The app does not scan or upload your whole gallery. " +
-                "Your bot token is entered at runtime and is not saved by this app or committed to GitHub."
+                "Press Start only if you have permission to share every image in this app's " +
+                "dedicated TelegramTestQueue folder. The app will send all supported image files " +
+                "in that folder to the Telegram chat ID you enter. It will not scan your gallery " +
+                "or other device folders. Images leave this device when sent. The bot token is " +
+                "entered at runtime and is not saved by this app or committed to GitHub."
             )
             .setCancelable(false)
-            .setPositiveButton("Start") { _, _ -> showDashboard() }
+            .setPositiveButton("Continue") { _, _ -> showDashboard() }
             .setNegativeButton("Exit") { _, _ -> finish() }
             .show()
     }
 
     private fun showDashboard() {
+        testImageFolder.mkdirs()
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 20, 24, 20)
         }
         root.addView(TextView(this).apply {
-            text = "Send selected images to Telegram"
+            text = "Send test-folder images to Telegram"
             textSize = 22f
         })
         root.addView(TextView(this).apply {
-            text = "Enter a test bot token and destination chat ID. Credentials remain in memory only."
+            text = "Place only images you intend to transmit in the folder below. Start sends every supported image currently in that folder."
             textSize = 14f
-            setPadding(0, 10, 0, 14)
+            setPadding(0, 10, 0, 12)
         })
+        folderView = TextView(this).apply {
+            text = "Test folder:\n${testImageFolder.absolutePath}"
+            textSize = 12f
+            setPadding(0, 0, 0, 12)
+        }
+        root.addView(folderView)
         tokenInput = EditText(this).apply {
             hint = "Telegram bot token"
             singleLine = true
@@ -73,14 +82,7 @@ class MainActivity : Activity() {
             inputType = android.text.InputType.TYPE_CLASS_TEXT
         }
         root.addView(chatIdInput)
-        root.addView(button("Choose images") { chooseImages() })
-        selectionView = TextView(this).apply {
-            text = "No images selected"
-            setPadding(0, 12, 0, 12)
-        }
-        root.addView(selectionView)
-        sendButton = button("Send selected images") { sendSelectedImages() }
-        sendButton.isEnabled = false
+        sendButton = button("Start sending test-folder images") { sendFolderImages() }
         root.addView(sendButton)
         statusView = TextView(this).apply {
             text = "Status: READY"
@@ -88,66 +90,54 @@ class MainActivity : Activity() {
             setPadding(0, 16, 0, 8)
         }
         root.addView(statusView)
-        root.addView(button("Clear selection") {
-            selectedImages.clear()
-            selectionView.text = "No images selected"
-            sendButton.isEnabled = false
-            statusView.text = "Status: READY"
-        })
+        root.addView(button("Refresh folder count") { updateFolderCount() })
         val scroll = ScrollView(this)
         scroll.addView(root)
         setContentView(scroll)
+        updateFolderCount()
     }
 
     private fun button(label: String, action: () -> Unit) =
         Button(this).apply { text = label; setOnClickListener { action() } }
 
-    private fun chooseImages() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "image/*"
-            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-        }
-        startActivityForResult(intent, PICK_IMAGES)
+    private fun listImages(): List<File> {
+        testImageFolder.mkdirs()
+        val extensions = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
+        return testImageFolder.listFiles()
+            ?.filter { it.isFile && it.extension.lowercase() in extensions }
+            ?.sortedBy { it.name.lowercase() }
+            .orEmpty()
     }
 
-    @Deprecated("Uses the platform document picker for broad Android compatibility")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != PICK_IMAGES || resultCode != RESULT_OK || data == null) return
-        selectedImages.clear()
-        data.clipData?.let { clip ->
-            for (i in 0 until clip.itemCount) selectedImages.add(clip.getItemAt(i).uri)
-        } ?: data.data?.let { selectedImages.add(it) }
-        selectionView.text = if (selectedImages.isEmpty()) "No images selected"
-            else "${selectedImages.size} image(s) selected"
-        sendButton.isEnabled = selectedImages.isNotEmpty()
-        statusView.text = "Status: SELECTION READY"
+    private fun updateFolderCount() {
+        val count = listImages().size
+        folderView.text = "Test folder:\n${testImageFolder.absolutePath}\nImages ready: $count"
+        if (::statusView.isInitialized) statusView.text = "Status: READY — $count image(s) in test folder"
     }
 
-    private fun sendSelectedImages() {
+    private fun sendFolderImages() {
         val token = tokenInput.text.toString().trim()
         val chatId = chatIdInput.text.toString().trim()
         if (token.isBlank() || chatId.isBlank()) {
             statusView.text = "Status: Enter bot token and chat ID first"
             return
         }
-        if (selectedImages.isEmpty()) {
-            statusView.text = "Status: Choose at least one image"
+        val images = listImages()
+        if (images.isEmpty()) {
+            statusView.text = "Status: No images found. Add test images to the folder shown above."
             return
         }
-        val images = selectedImages.toList()
         sendButton.isEnabled = false
-        statusView.text = "Status: Sending ${images.size} selected image(s)…"
+        statusView.text = "Status: Sending ${images.size} test-folder image(s)…"
         executor.execute {
             var sent = 0
             val errors = mutableListOf<String>()
-            images.forEachIndexed { index, uri ->
+            images.forEachIndexed { index, file ->
                 try {
-                    sendPhoto(token, chatId, uri, index + 1)
+                    sendPhoto(token, chatId, file, index + 1)
                     sent++
                 } catch (e: Exception) {
-                    errors.add("Image ${index + 1}: ${e.message ?: e.javaClass.simpleName}")
+                    errors.add("${file.name}: ${e.message ?: e.javaClass.simpleName}")
                 }
             }
             runOnUiThread {
@@ -156,12 +146,12 @@ class MainActivity : Activity() {
                 } else {
                     "Status: Sent $sent/${images.size}; failed: ${errors.joinToString("; ").take(500)}"
                 }
-                sendButton.isEnabled = selectedImages.isNotEmpty()
+                sendButton.isEnabled = true
             }
         }
     }
 
-    private fun sendPhoto(token: String, chatId: String, uri: Uri, index: Int) {
+    private fun sendPhoto(token: String, chatId: String, file: File, index: Int) {
         val boundary = "----AndroidTelegram" + UUID.randomUUID().toString().replace("-", "")
         val connection = (URL("https://api.telegram.org/bot$token/sendPhoto").openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -180,12 +170,9 @@ class MainActivity : Activity() {
                 }
                 field("chat_id", chatId)
                 out.writeBytes("--$boundary\r\n")
-                out.writeBytes("Content-Disposition: form-data; name=\"photo\"; filename=\"selected_$index.jpg\"\r\n")
+                out.writeBytes("Content-Disposition: form-data; name=\"photo\"; filename=\"${file.name}\"\r\n")
                 out.writeBytes("Content-Type: application/octet-stream\r\n\r\n")
-                contentResolver.openInputStream(uri).use { input ->
-                    requireNotNull(input) { "Unable to open selected image" }
-                    input.copyTo(out)
-                }
+                FileInputStream(file).use { input -> input.copyTo(out) }
                 out.writeBytes("\r\n--$boundary--\r\n")
             }
             val code = connection.responseCode
@@ -202,9 +189,5 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         executor.shutdownNow()
         super.onDestroy()
-    }
-
-    companion object {
-        private const val PICK_IMAGES = 1001
     }
 }
