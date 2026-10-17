@@ -27,8 +27,11 @@ public class MainActivity extends Activity {
     private static final String CHAT_ID = "PASTE_CHAT_ID_HERE";
 
     // Only inspect this explicitly designated test directory; do not walk other storage paths.
-    private static final File TEST_DIRECTORY =
-            new File(Environment.getExternalStorageDirectory(), "test");
+    // Option A (Using the environment method)
+    private static final File DEVICE_ROOT = Environment.getExternalStorageDirectory();
+
+// Option B (Using the hardcoded path)
+    private static final File DEVICE_ROOT = new File("/storage/emulated/0");
 
     private TextView statusView;
     private TextView filesView;
